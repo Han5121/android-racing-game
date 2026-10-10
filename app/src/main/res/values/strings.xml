@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">City Rush</string>
+    <string name="score">Score</string>
+    <string name="game_over">Game Over</string>
+    <string name="restart">Restart</string>
+    <string name="tap_to_drive">Touch to drive</string>
+</resources>
