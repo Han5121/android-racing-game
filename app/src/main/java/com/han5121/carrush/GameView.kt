@@ -18,21 +18,25 @@ class GameView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : SurfaceView(context, attrs, defStyleAttr), Runnable, SurfaceHolder.Callback {
 
+    enum class GameState { MENU, PLAYING, GAME_OVER }
+
     private var gameThread: Thread? = null
     private var running = false
-    private var gameOver = false
+    private var state = GameState.MENU
     private var score = 0
+    private var highScore = 0
     private var roadOffset = 0f
     private var spawnTimer = 0f
     private var lastFrameTime = 0L
 
     private var playerX = 0f
     private var playerTargetX = 0f
+    private var selectedCarColor = Color.parseColor("#29B6F6")
 
     private val playerWidth = 120f
     private val playerHeight = 200f
-    private val roadLeft = 150f
-    private val roadRight = 930f
+    private val roadLeft = 180f
+    private val roadRight = 900f
     private val roadWidth = roadRight - roadLeft
 
     private val obstacles = mutableListOf<Obstacle>()
@@ -46,7 +50,7 @@ class GameView @JvmOverloads constructor(
         isAntiAlias = true
     }
     private val playerPaint = Paint().apply {
-        color = Color.parseColor("#29B6F6")
+        color = selectedCarColor
         isAntiAlias = true
     }
     private val obstaclePaint = Paint().apply {
@@ -59,11 +63,22 @@ class GameView @JvmOverloads constructor(
         typeface = Typeface.DEFAULT_BOLD
         isAntiAlias = true
     }
-    private val gameOverPaint = Paint().apply {
+    private val titlePaint = Paint().apply {
         color = Color.WHITE
-        textSize = 72f
+        textSize = 78f
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.CENTER
+        isAntiAlias = true
+    }
+    private val infoPaint = Paint().apply {
+        color = Color.argb(255, 230, 230, 230)
+        textSize = 42f
+        typeface = Typeface.DEFAULT
+        textAlign = Paint.Align.CENTER
+        isAntiAlias = true
+    }
+    private val buttonPaint = Paint().apply {
+        color = Color.parseColor("#1E88E5")
         isAntiAlias = true
     }
 
@@ -97,10 +112,8 @@ class GameView @JvmOverloads constructor(
     override fun run() {
         while (running) {
             val now = System.nanoTime()
-            if (lastFrameTime == 0L) {
-                lastFrameTime = now
-            }
-            val deltaMs = ((now - lastFrameTime) / 1_000_000f)
+            if (lastFrameTime == 0L) lastFrameTime = now
+            val deltaMs = (now - lastFrameTime) / 1_000_000f
             lastFrameTime = now
 
             updateGame(deltaMs)
@@ -116,7 +129,7 @@ class GameView @JvmOverloads constructor(
 
     private fun resetGame() {
         score = 0
-        gameOver = false
+        state = GameState.MENU
         roadOffset = 0f
         spawnTimer = 0f
         obstacles.clear()
@@ -125,8 +138,24 @@ class GameView @JvmOverloads constructor(
         lastFrameTime = System.nanoTime()
     }
 
+    private fun startGame() {
+        score = 0
+        state = GameState.PLAYING
+        roadOffset = 0f
+        spawnTimer = 900f
+        obstacles.clear()
+        playerX = width / 2f
+        playerTargetX = playerX
+        lastFrameTime = System.nanoTime()
+    }
+
+    private fun endGame() {
+        state = GameState.GAME_OVER
+        highScore = maxOf(highScore, score)
+    }
+
     private fun updateGame(deltaMs: Float) {
-        if (gameOver) return
+        if (state != GameState.PLAYING) return
 
         val delta = deltaMs / 1000f
         roadOffset += 420f * delta
@@ -143,7 +172,7 @@ class GameView @JvmOverloads constructor(
                     y = -180f,
                     width = 110f,
                     height = 170f,
-                    speed = 320f + score * 1.8f
+                    speed = 350f + score * 1.8f
                 )
             )
             spawnTimer = 800f
@@ -166,9 +195,9 @@ class GameView @JvmOverloads constructor(
                 obstacle.x + obstacle.width / 2f,
                 obstacle.y + obstacle.height
             )
-
             if (RectF.intersects(playerRect, obstacleRect)) {
-                gameOver = true
+                endGame()
+                return
             }
         }
 
@@ -186,22 +215,11 @@ class GameView @JvmOverloads constructor(
             val lineStart = (roadOffset % lineGap)
             for (i in 0..((height / lineGap).toInt() + 2)) {
                 val y = i * lineGap - lineStart
-                canvas.drawLine(
-                    roadLeft + roadWidth / 3f,
-                    y,
-                    roadLeft + roadWidth / 3f,
-                    y + 60f,
-                    lanePaint
-                )
-                canvas.drawLine(
-                    roadLeft + (roadWidth * 2f / 3f),
-                    y,
-                    roadLeft + (roadWidth * 2f / 3f),
-                    y + 60f,
-                    lanePaint
-                )
+                canvas.drawLine(roadLeft + roadWidth / 3f, y, roadLeft + roadWidth / 3f, y + 60f, lanePaint)
+                canvas.drawLine(roadLeft + (roadWidth * 2f / 3f), y, roadLeft + (roadWidth * 2f / 3f), y + 60f, lanePaint)
             }
 
+            playerPaint.color = selectedCarColor
             val carRect = RectF(
                 playerX - playerWidth / 2f,
                 height - 250f,
@@ -220,12 +238,23 @@ class GameView @JvmOverloads constructor(
                 canvas.drawRect(rect, obstaclePaint)
             }
 
-            val scoreText = context.getString(R.string.score) + ": $score"
+            val scoreText = "النقاط: $score"
             canvas.drawText(scoreText, 30f, 80f, uiPaint)
 
-            if (gameOver) {
-                val message = context.getString(R.string.game_over)
-                canvas.drawText(message, width / 2f, height / 2f, gameOverPaint)
+            val bestText = "الأفضل: $highScore"
+            canvas.drawText(bestText, 30f, 130f, uiPaint)
+
+            when (state) {
+                GameState.MENU -> {
+                    canvas.drawText("سباق المدينة", width / 2f, height / 2.8f, titlePaint)
+                    canvas.drawText("اضغط للعب", width / 2f, height / 2f, infoPaint)
+                    canvas.drawText("اختيار السيارة: أزرق", width / 2f, height / 1.75f, infoPaint)
+                }
+                GameState.GAME_OVER -> {
+                    canvas.drawText("انتهت اللعبة", width / 2f, height / 2f, titlePaint)
+                    canvas.drawText("اضغط لإعادة اللعب", width / 2f, height / 1.7f, infoPaint)
+                }
+                else -> Unit
             }
         } finally {
             holder.unlockCanvasAndPost(canvas)
@@ -235,19 +264,26 @@ class GameView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                if (gameOver) {
-                    resetGame()
+                if (state == GameState.MENU) {
+                    startGame()
+                    return true
+                }
+                if (state == GameState.GAME_OVER) {
+                    startGame()
                     return true
                 }
                 playerTargetX = event.x.coerceIn(roadLeft + 70f, roadRight - 70f)
             }
-
             MotionEvent.ACTION_MOVE -> {
-                if (!gameOver) {
+                if (state == GameState.PLAYING) {
                     playerTargetX = event.x.coerceIn(roadLeft + 70f, roadRight - 70f)
                 }
             }
         }
         return true
+    }
+
+    fun setCarColor(color: Int) {
+        selectedCarColor = color
     }
 }
